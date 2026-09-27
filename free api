@@ -1,0 +1,1645 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# NEXUS DEVOPS STUDIO v1.0.0
+# Studio créateur DevOps + catalogue 1400+ APIs gratuites
+# LiteLLM unifié + Fal.ai + toutes les sources publiques
+# Auteur : Aissa Mohammedi (DGK)
+# Licence : NEXUS-OPEN-2.0
+# Compatible a-Shell iOS - os.path uniquement - stdlib pure
+
+import os
+import re
+import sys
+import ssl
+import json
+import time
+import gzip
+import zlib
+import lzma
+import sqlite3
+import hashlib
+import threading
+import urllib.request
+import urllib.parse
+import urllib.error
+import collections
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+VERSION = "1.0.0"
+AUTEUR = "Aissa Mohammedi (DGK)"
+LICENCE = "NEXUS-OPEN-2.0"
+USER_AGENT = "NexusDevOpsStudio/1.0"
+
+HOME = os.path.expanduser("~")
+BASE = os.path.join(HOME, "Documents", "nexus_devops_studio")
+os.makedirs(BASE, exist_ok=True)
+
+CACHE_DIR = os.path.join(BASE, "cache")
+LOG_DIR = os.path.join(BASE, "logs")
+EXPORT_DIR = os.path.join(BASE, "exports")
+SCRIPTS_DIR = os.path.join(BASE, "scripts")
+os.makedirs(CACHE_DIR, exist_ok=True)
+os.makedirs(LOG_DIR, exist_ok=True)
+os.makedirs(EXPORT_DIR, exist_ok=True)
+os.makedirs(SCRIPTS_DIR, exist_ok=True)
+
+DB_PATH = os.path.join(BASE, "studio.db")
+LOG_FILE = os.path.join(LOG_DIR, "studio.log")
+CATALOG_FILE = os.path.join(BASE, "catalog.json")
+
+PORT = 8120
+
+CTX = ssl.create_default_context()
+CTX.check_hostname = False
+CTX.verify_mode = ssl.CERT_NONE
+
+LOG_LOCK = threading.RLock()
+
+
+def log(msg):
+ts = datetime.now(timezone.utc).isoformat()
+line = "[" + ts + "] " + str(msg)
+with LOG_LOCK:
+try:
+print(line, flush=True)
+except Exception:
+pass
+try:
+with open(LOG_FILE, "a", encoding="utf-8") as f:
+f.write(line + "\n")
+except OSError:
+pass
+
+
+# ===============================================================
+# CATALOGUE 1400+ APIS GRATUITES
+# ===============================================================
+
+CATALOG = {
+"ai_llm": [
+{"nom": "OpenAI", "url": "https://api.openai.com/v1", "auth": "key", "free": "5$/credit", "doc": "https://platform.openai.com/docs"},
+{"nom": "Anthropic Claude", "url": "https://api.anthropic.com/v1", "auth": "key", "free": "5$/credit", "doc": "https://docs.anthropic.com"},
+{"nom": "Google Gemini", "url": "https://generativelanguage.googleapis.com/v1", "auth": "key", "free": "60 req/min", "doc": "https://ai.google.dev/docs"},
+{"nom": "Mistral AI", "url": "https://api.mistral.ai/v1", "auth": "key", "free": "1 req/sec", "doc": "https://docs.mistral.ai"},
+{"nom": "Cohere", "url": "https://api.cohere.ai/v1", "auth": "key", "free": "5 req/min", "doc": "https://docs.cohere.com"},
+{"nom": "HuggingFace Inference", "url": "https://api-inference.huggingface.co", "auth": "key", "free": "30k/mois", "doc": "https://huggingface.co/docs/api-inference"},
+{"nom": "Groq", "url": "https://api.groq.com/openai/v1", "auth": "key", "free": "gratuit", "doc": "https://console.groq.com/docs"},
+{"nom": "Together AI", "url": "https://api.together.xyz/v1", "auth": "key", "free": "5$", "doc": "https://docs.together.ai"},
+{"nom": "Perplexity", "url": "https://api.perplexity.ai", "auth": "key", "free": "5$/mois", "doc": "https://docs.perplexity.ai"},
+{"nom": "Replicate", "url": "https://api.replicate.com/v1", "auth": "key", "free": "essai", "doc": "https://replicate.com/docs"},
+{"nom": "DeepInfra", "url": "https://api.deepinfra.com/v1", "auth": "key", "free": "1.80$", "doc": "https://deepinfra.com/docs"},
+{"nom": "Fireworks AI", "url": "https://api.fireworks.ai/inference/v1", "auth": "key", "free": "1$", "doc": "https://docs.fireworks.ai"},
+{"nom": "OpenRouter", "url": "https://openrouter.ai/api/v1", "auth": "key", "free": "modeles gratuits", "doc": "https://openrouter.ai/docs"},
+{"nom": "LiteLLM (proxy)", "url": "http://localhost:4000", "auth": "key", "free": "self-hosted", "doc": "https://docs.litellm.ai"},
+{"nom": "Ollama (local)", "url": "http://localhost:11434", "auth": "aucune", "free": "local", "doc": "https://ollama.ai"},
+{"nom": "LM Studio (local)", "url": "http://localhost:1234/v1", "auth": "aucune", "free": "local", "doc": "https://lmstudio.ai"},
+{"nom": "vLLM (local)", "url": "http://localhost:8000/v1", "auth": "aucune", "free": "local", "doc": "https://docs.vllm.ai"},
+{"nom": "llama.cpp (local)", "url": "http://localhost:8080", "auth": "aucune", "free": "local", "doc": "https://github.com/ggerganov/llama.cpp"},
+{"nom": "Fal.ai", "url": "https://fal.run", "auth": "key", "free": "1$", "doc": "https://fal.ai/docs"},
+{"nom": "Anyscale Endpoints", "url": "https://api.endpoints.anyscale.com/v1", "auth": "key", "free": "10$", "doc": "https://docs.anyscale.com"},
+],
+"ai_image": [
+{"nom": "Stability AI", "url": "https://api.stability.ai", "auth": "key", "free": "25 credits", "doc": "https://platform.stability.ai/docs"},
+{"nom": "Replicate Images", "url": "https://api.replicate.com/v1", "auth": "key", "free": "essai", "doc": "https://replicate.com/docs"},
+{"nom": "HuggingFace Diffusers", "url": "https://api-inference.huggingface.co", "auth": "key", "free": "30k/mois", "doc": "https://huggingface.co/docs"},
+{"nom": "Leonardo AI", "url": "https://cloud.leonardo.ai/api/rest/v1", "auth": "key", "free": "150 tokens/jour", "doc": "https://docs.leonardo.ai"},
+{"nom": "Clipdrop", "url": "https://clipdrop-api.co", "auth": "key", "free": "100 credits", "doc": "https://clipdrop.co/apis/docs"},
+{"nom": "Remove.bg", "url": "https://api.remove.bg/v1.0", "auth": "key", "free": "50/mois", "doc": "https://www.remove.bg/api"},
+{"nom": "DeepAI", "url": "https://api.deepai.org/api", "auth": "key", "free": "essai", "doc": "https://deepai.org/docs"},
+{"nom": "Fal.ai Image", "url": "https://fal.run/fal-ai", "auth": "key", "free": "1$", "doc": "https://fal.ai/models"},
+],
+"ai_video": [
+{"nom": "Runway ML", "url": "https://api.runwayml.com/v1", "auth": "key", "free": "credits", "doc": "https://docs.runwayml.com"},
+{"nom": "Fal.ai Video", "url": "https://fal.run/fal-ai", "auth": "key", "free": "1$", "doc": "https://fal.ai/models"},
+{"nom": "Replicate Video", "url": "https://api.replicate.com/v1", "auth": "key", "free": "essai", "doc": "https://replicate.com/docs"},
+{"nom": "HeyGen", "url": "https://api.heygen.com", "auth": "key", "free": "10 credits", "doc": "https://docs.heygen.com"},
+{"nom": "D-ID", "url": "https://api.d-id.com", "auth": "key", "free": "5 min", "doc": "https://docs.d-id.com"},
+],
+"ai_audio": [
+{"nom": "OpenAI Whisper", "url": "https://api.openai.com/v1/audio", "auth": "key", "free": "credit", "doc": "https://platform.openai.com/docs"},
+{"nom": "ElevenLabs", "url": "https://api.elevenlabs.io/v1", "auth": "key", "free": "10k chars", "doc": "https://elevenlabs.io/docs"},
+{"nom": "Play.ht", "url": "https://api.play.ht/api/v1", "auth": "key", "free": "12500 chars", "doc": "https://docs.play.ht"},
+{"nom": "Speechify", "url": "https://api.sws.speechify.com", "auth": "key", "free": "50 req", "doc": "https://docs.speechify.com"},
+{"nom": "Deepgram", "url": "https://api.deepgram.com/v1", "auth": "key", "free": "45 min", "doc": "https://developers.deepgram.com"},
+{"nom": "AssemblyAI", "url": "https://api.assemblyai.com/v2", "auth": "key", "free": "5h", "doc": "https://www.assemblyai.com/docs"},
+{"nom": "Fal.ai Audio", "url": "https://fal.run/fal-ai", "auth": "key", "free": "1$", "doc": "https://fal.ai/models"},
+],
+"ai_code": [
+{"nom": "GitHub Copilot API", "url": "https://api.githubcopilot.com", "auth": "key", "free": "trial", "doc": "https://docs.github.com"},
+{"nom": "Codeium", "url": "https://api.codeium.com", "auth": "key", "free": "gratuit", "doc": "https://codeium.com/docs"},
+{"nom": "Tabnine", "url": "https://api.tabnine.com", "auth": "key", "free": "trial", "doc": "https://docs.tabnine.com"},
+{"nom": "Sourcegraph Cody", "url": "https://sourcegraph.com/.api", "auth": "key", "free": "gratuit", "doc": "https://sourcegraph.com/docs"},
+{"nom": "AWS CodeWhisperer", "url": "https://codewhisperer.us-east-1.amazonaws.com", "auth": "key", "free": "gratuit", "doc": "https://docs.aws.amazon.com"},
+],
+"ai_vision": [
+{"nom": "Google Vision API", "url": "https://vision.googleapis.com/v1", "auth": "key", "free": "1000/mois", "doc": "https://cloud.google.com/vision/docs"},
+{"nom": "AWS Rekognition", "url": "https://rekognition.amazonaws.com", "auth": "key", "free": "5000/mois", "doc": "https://docs.aws.amazon.com"},
+{"nom": "Azure Computer Vision", "url": "https://api.cognitive.microsoft.com", "auth": "key", "free": "5000/mois", "doc": "https://docs.microsoft.com"},
+{"nom": "Clarifai", "url": "https://api.clarifai.com/v2", "auth": "key", "free": "1000/mois", "doc": "https://docs.clarifai.com"},
+{"nom": "Roboflow", "url": "https://detect.roboflow.com", "auth": "key", "free": "1000 credits", "doc": "https://docs.roboflow.com"},
+],
+"ai_nlp": [
+{"nom": "Google NLP", "url": "https://language.googleapis.com/v1", "auth": "key", "free": "5000/mois", "doc": "https://cloud.google.com/natural-language/docs"},
+{"nom": "AWS Comprehend", "url": "https://comprehend.amazonaws.com", "auth": "key", "free": "50k units/mois", "doc": "https://docs.aws.amazon.com"},
+{"nom": "Azure Text Analytics", "url": "https://api.cognitive.microsoft.com", "auth": "key", "free": "5000/mois", "doc": "https://docs.microsoft.com"},
+{"nom": "SpaCy (local)", "url": "local", "auth": "aucune", "free": "local", "doc": "https://spacy.io"},
+{"nom": "NLTK (local)", "url": "local", "auth": "aucune", "free": "local", "doc": "https://www.nltk.org"},
+],
+"payment": [
+{"nom": "Stripe", "url": "https://api.stripe.com/v1", "auth": "key", "free": "test mode", "doc": "https://stripe.com/docs/api"},
+{"nom": "PayPal", "url": "https://api.paypal.com", "auth": "key", "free": "sandbox", "doc": "https://developer.paypal.com/docs"},
+{"nom": "Square", "url": "https://connect.squareup.com/v2", "auth": "key", "free": "sandbox", "doc": "https://developer.squareup.com"},
+{"nom": "Plaid", "url": "https://production.plaid.com", "auth": "key", "free": "sandbox", "doc": "https://plaid.com/docs"},
+{"nom": "Razorpay", "url": "https://api.razorpay.com/v1", "auth": "key", "free": "test", "doc": "https://razorpay.com/docs"},
+{"nom": "Adyen", "url": "https://checkout-test.adyen.com", "auth": "key", "free": "test", "doc": "https://docs.adyen.com"},
+{"nom": "Braintree", "url": "https://api.braintreegateway.com", "auth": "key", "free": "sandbox", "doc": "https://developer.paypal.com"},
+{"nom": "Mollie", "url": "https://api.mollie.com/v2", "auth": "key", "free": "test", "doc": "https://docs.mollie.com"},
+{"nom": "Klarna", "url": "https://api.klarna.com", "auth": "key", "free": "test", "doc": "https://docs.klarna.com"},
+{"nom": "Wise", "url": "https://api.transferwise.com", "auth": "key", "free": "sandbox", "doc": "https://api-docs.wise.com"},
+],
+"finance": [
+{"nom": "Alpha Vantage", "url": "https://www.alphavantage.co/query", "auth": "key", "free": "25/jour", "doc": "https://www.alphavantage.co/documentation"},
+{"nom": "Yahoo Finance", "url": "https://query1.finance.yahoo.com", "auth": "aucune", "free": "gratuit", "doc": "https://finance.yahoo.com"},
+{"nom": "Finnhub", "url": "https://finnhub.io/api/v1", "auth": "key", "free": "60/min", "doc": "https://finnhub.io/docs/api"},
+{"nom": "Twelve Data", "url": "https://api.twelvedata.com", "auth": "key", "free": "800/jour", "doc": "https://twelvedata.com/docs"},
+{"nom": "Polygon.io", "url": "https://api.polygon.io", "auth": "key", "free": "5/min", "doc": "https://polygon.io/docs"},
+{"nom": "IEX Cloud", "url": "https://cloud.iexapis.com", "auth": "key", "free": "50k/mois", "doc": "https://iexcloud.io/docs"},
+{"nom": "Marketstack", "url": "https://api.marketstack.com/v1", "auth": "key", "free": "1000/mois", "doc": "https://marketstack.com/documentation"},
+{"nom": "Financial Modeling Prep", "url": "https://financialmodelingprep.com/api/v3", "auth": "key", "free": "250/jour", "doc": "https://financialmodelingprep.com/developer/docs"},
+{"nom": "CoinGecko", "url": "https://api.coingecko.com/api/v3", "auth": "aucune", "free": "50/min", "doc": "https://www.coingecko.com/api/documentation"},
+{"nom": "CoinMarketCap", "url": "https://pro-api.coinmarketcap.com/v1", "auth": "key", "free": "333/jour", "doc": "https://coinmarketcap.com/api/documentation"},
+{"nom": "Binance", "url": "https://api.binance.com/api/v3", "auth": "aucune", "free": "1200/min", "doc": "https://binance-docs.github.io"},
+{"nom": "Kraken", "url": "https://api.kraken.com/0", "auth": "aucune", "free": "gratuit", "doc": "https://docs.kraken.com"},
+{"nom": "Coinbase", "url": "https://api.coinbase.com/v2", "auth": "aucune", "free": "10k/h", "doc": "https://docs.cloud.coinbase.com"},
+{"nom": "Etherscan", "url": "https://api.etherscan.io/api", "auth": "key", "free": "5/sec", "doc": "https://docs.etherscan.io"},
+{"nom": "Blockchain.info", "url": "https://blockchain.info", "auth": "aucune", "free": "gratuit", "doc": "https://blockchain.info/api"},
+],
+"health": [
+{"nom": "OpenFDA", "url": "https://api.fda.gov", "auth": "aucune", "free": "240/min", "doc": "https://open.fda.gov/apis"},
+{"nom": "PubMed E-utilities", "url": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils", "auth": "aucune", "free": "3/sec", "doc": "https://www.ncbi.nlm.nih.gov/books/NBK25501"},
+{"nom": "ClinicalTrials.gov", "url": "https://clinicaltrials.gov/api", "auth": "aucune", "free": "gratuit", "doc": "https://clinicaltrials.gov/api"},
+{"nom": "WHO GHO", "url": "https://ghoapi.azureedge.net/api", "auth": "aucune", "free": "gratuit", "doc": "https://www.who.int/data/gho"},
+{"nom": "Disease.sh", "url": "https://disease.sh/v3", "auth": "aucune", "free": "gratuit", "doc": "https://disease.sh/docs"},
+{"nom": "Nutritionix", "url": "https://trackapi.nutritionix.com/v2", "auth": "key", "free": "500/mois", "doc": "https://developer.nutritionix.com"},
+{"nom": "Edamam", "url": "https://api.edamam.com", "auth": "key", "free": "5000/mois", "doc": "https://developer.edamam.com"},
+{"nom": "Open Food Facts", "url": "https://world.openfoodfacts.org/api/v0", "auth": "aucune", "free": "100/min", "doc": "https://world.openfoodfacts.org/data"},
+{"nom": "Fitbit", "url": "https://api.fitbit.com", "auth": "oauth", "free": "gratuit", "doc": "https://dev.fitbit.com"},
+{"nom": "Withings", "url": "https://wbsapi.withings.net", "auth": "oauth", "free": "gratuit", "doc": "https://developer.withings.com"},
+{"nom": "Human API", "url": "https://api.humanapi.co/v1", "auth": "key", "free": "trial", "doc": "https://developer.humanapi.co"},
+{"nom": "Infermedica", "url": "https://api.infermedica.com/v3", "auth": "key", "free": "gratuit", "doc": "https://developer.infermedica.com"},
+],
+"weather": [
+{"nom": "OpenWeatherMap", "url": "https://api.openweathermap.org/data/2.5", "auth": "key", "free": "60/min", "doc": "https://openweathermap.org/api"},
+{"nom": "Open-Meteo", "url": "https://api.open-meteo.com/v1", "auth": "aucune", "free": "10k/jour", "doc": "https://open-meteo.com/en/docs"},
+{"nom": "WeatherAPI", "url": "https://api.weatherapi.com/v1", "auth": "key", "free": "1M/mois", "doc": "https://www.weatherapi.com/docs"},
+{"nom": "Tomorrow.io", "url": "https://api.tomorrow.io/v4", "auth": "key", "free": "500/jour", "doc": "https://docs.tomorrow.io"},
+{"nom": "Visual Crossing", "url": "https://weather.visualcrossing.com", "auth": "key", "free": "1000/jour", "doc": "https://www.visualcrossing.com/resources/documentation"},
+{"nom": "Weatherbit", "url": "https://api.weatherbit.io/v2.0", "auth": "key", "free": "50/jour", "doc": "https://www.weatherbit.io/api"},
+{"nom": "NOAA", "url": "https://api.weather.gov", "auth": "aucune", "free": "gratuit", "doc": "https://www.weather.gov/documentation/services-web-api"},
+{"nom": "Meteostat", "url": "https://bulk.meteostat.net", "auth": "aucune", "free": "gratuit", "doc": "https://dev.meteostat.net"},
+{"nom": "Storm Glass", "url": "https://api.stormglass.io/v2", "auth": "key", "free": "10/jour", "doc": "https://docs.stormglass.io"},
+{"nom": "AccuWeather", "url": "https://dataservice.accuweather.com", "auth": "key", "free": "50/jour", "doc": "https://developer.accuweather.com"},
+],
+"geo_maps": [
+{"nom": "Google Maps", "url": "https://maps.googleapis.com/maps/api", "auth": "key", "free": "200$/mois", "doc": "https://developers.google.com/maps"},
+{"nom": "Mapbox", "url": "https://api.mapbox.com", "auth": "key", "free": "50k/mois", "doc": "https://docs.mapbox.com"},
+{"nom": "OpenStreetMap Nominatim", "url": "https://nominatim.openstreetmap.org", "auth": "aucune", "free": "1/sec", "doc": "https://nominatim.org/release-docs"},
+{"nom": "Photon (Komoot)", "url": "https://photon.komoot.io", "auth": "aucune", "free": "gratuit", "doc": "https://photon.komoot.io"},
+{"nom": "Overpass API", "url": "https://overpass-api.de/api", "auth": "aucune", "free": "gratuit", "doc": "https://wiki.openstreetmap.org/wiki/Overpass_API"},
+{"nom": "HERE Maps", "url": "https://places.ls.hereapi.com", "auth": "key", "free": "250k/mois", "doc": "https://developer.here.com/documentation"},
+{"nom": "TomTom", "url": "https://api.tomtom.com", "auth": "key", "free": "2500/jour", "doc": "https://developer.tomtom.com"},
+{"nom": "PositionStack", "url": "https://api.positionstack.com/v1", "auth": "key", "free": "25k/mois", "doc": "https://positionstack.com/documentation"},
+{"nom": "Geoapify", "url": "https://api.geoapify.com/v1", "auth": "key", "free": "3000/jour", "doc": "https://apidocs.geoapify.com"},
+{"nom": "IPGeolocation", "url": "https://api.ipgeolocation.io", "auth": "key", "free": "30k/mois", "doc": "https://ipgeolocation.io/documentation"},
+{"nom": "IP-API", "url": "http://ip-api.com/json", "auth": "aucune", "free": "45/min", "doc": "https://ip-api.com/docs"},
+{"nom": "IPAPI.co", "url": "https://ipapi.co/json", "auth": "aucune", "free": "1000/jour", "doc": "https://ipapi.co/api"},
+],
+"news": [
+{"nom": "NewsAPI", "url": "https://newsapi.org/v2", "auth": "key", "free": "100/jour", "doc": "https://newsapi.org/docs"},
+{"nom": "GNews", "url": "https://gnews.io/api/v4", "auth": "key", "free": "100/jour", "doc": "https://gnews.io/docs"},
+{"nom": "Currents API", "url": "https://api.currentsapi.services/v1", "auth": "key", "free": "600/jour", "doc": "https://currentsapi.services/en/docs"},
+{"nom": "NYT", "url": "https://api.nytimes.com/svc", "auth": "key", "free": "500/jour", "doc": "https://developer.nytimes.com"},
+{"nom": "Guardian", "url": "https://content.guardianapis.com", "auth": "key", "free": "12/sec", "doc": "https://open-platform.theguardian.com/documentation"},
+{"nom": "HackerNews", "url": "https://hacker-news.firebaseio.com/v0", "auth": "aucune", "free": "gratuit", "doc": "https://github.com/HackerNews/API"},
+{"nom": "Reddit", "url": "https://www.reddit.com", "auth": "aucune", "free": "60/min", "doc": "https://www.reddit.com/dev/api"},
+{"nom": "Dev.to", "url": "https://dev.to/api", "auth": "aucune", "free": "gratuit", "doc": "https://developers.forem.com/api"},
+{"nom": "Medium", "url": "https://api.medium.com/v1", "auth": "key", "free": "gratuit", "doc": "https://github.com/Medium/medium-api-docs"},
+],
+"sports": [
+{"nom": "API-Football", "url": "https://v3.football.api-sports.io", "auth": "key", "free": "100/jour", "doc": "https://www.api-football.com/documentation"},
+{"nom": "TheSportsDB", "url": "https://www.thesportsdb.com/api/v1", "auth": "aucune", "free": "gratuit", "doc": "https://www.thesportsdb.com/api.php"},
+{"nom": "SportsDB", "url": "https://api.sportsdb.com", "auth": "key", "free": "trial", "doc": "https://sportsdb.com"},
+{"nom": "LiveScore API", "url": "https://livescore-api.com/api-client", "auth": "key", "free": "100/jour", "doc": "https://www.livescore-api.com/documentation"},
+{"nom": "SportMonks", "url": "https://api.sportmonks.com/v3", "auth": "key", "free": "180 req/h", "doc": "https://docs.sportmonks.com"},
+{"nom": "BALLDONTLIE", "url": "https://www.balldontlie.io/api/v1", "auth": "aucune", "free": "gratuit", "doc": "https://www.balldontlie.io"},
+],
+"social": [
+{"nom": "Twitter/X API", "url": "https://api.twitter.com/2", "auth": "oauth", "free": "1500 tweets/mois", "doc": "https://developer.twitter.com/en/docs"},
+{"nom": "Reddit API", "url": "https://oauth.reddit.com", "auth": "oauth", "free": "100/min", "doc": "https://www.reddit.com/dev/api"},
+{"nom": "Discord", "url": "https://discord.com/api/v10", "auth": "token", "free": "gratuit", "doc": "https://discord.com/developers/docs"},
+{"nom": "Slack", "url": "https://slack.com/api", "auth": "token", "free": "gratuit", "doc": "https://api.slack.com"},
+{"nom": "Telegram Bot", "url": "https://api.telegram.org", "auth": "token", "free": "gratuit", "doc": "https://core.telegram.org/bots/api"},
+{"nom": "WhatsApp Business", "url": "https://graph.facebook.com/v17.0", "auth": "token", "free": "1000 conv/mois", "doc": "https://developers.facebook.com/docs/whatsapp"},
+{"nom": "Mastodon", "url": "https://mastodon.social/api/v1", "auth": "token", "free": "300/5min", "doc": "https://docs.joinmastodon.org/api"},
+{"nom": "Bluesky", "url": "https://public.api.bsky.app", "auth": "aucune", "free": "gratuit", "doc": "https://docs.bsky.app"},
+{"nom": "LinkedIn", "url": "https://api.linkedin.com/v2", "auth": "oauth", "free": "gratuit", "doc": "https://learn.microsoft.com/en-us/linkedin"},
+],
+"email": [
+{"nom": "SendGrid", "url": "https://api.sendgrid.com/v3", "auth": "key", "free": "100/jour", "doc": "https://docs.sendgrid.com"},
+{"nom": "Mailgun", "url": "https://api.mailgun.net/v3", "auth": "key", "free": "5000/mois", "doc": "https://documentation.mailgun.com"},
+{"nom": "Postmark", "url": "https://api.postmarkapp.com", "auth": "key", "free": "100/mois", "doc": "https://postmarkapp.com/developer"},
+{"nom": "Resend", "url": "https://api.resend.com", "auth": "key", "free": "3000/mois", "doc": "https://resend.com/docs"},
+{"nom": "Brevo", "url": "https://api.brevo.com/v3", "auth": "key", "free": "300/jour", "doc": "https://developers.brevo.com"},
+{"nom": "Mailjet", "url": "https://api.mailjet.com/v3", "auth": "key", "free": "6000/mois", "doc": "https://dev.mailjet.com"},
+{"nom": "Amazon SES", "url": "https://email.amazonaws.com", "auth": "key", "free": "62k/mois", "doc": "https://docs.aws.amazon.com/ses"},
+],
+"sms": [
+{"nom": "Twilio", "url": "https://api.twilio.com/2010-04-01", "auth": "key", "free": "15$ essai", "doc": "https://www.twilio.com/docs"},
+{"nom": "Vonage", "url": "https://rest.nexmo.com", "auth": "key", "free": "2 EUR", "doc": "https://developer.vonage.com"},
+{"nom": "MessageBird", "url": "https://rest.messagebird.com", "auth": "key", "free": "trial", "doc": "https://developers.messagebird.com"},
+{"nom": "Plivo", "url": "https://api.plivo.com/v1", "auth": "key", "free": "5$", "doc": "https://www.plivo.com/docs"},
+{"nom": "ClickSend", "url": "https://rest.clicksend.com/v3", "auth": "key", "free": "trial", "doc": "https://developers.clicksend.com"},
+],
+"storage": [
+{"nom": "AWS S3", "url": "https://s3.amazonaws.com", "auth": "key", "free": "5 GB", "doc": "https://docs.aws.amazon.com/s3"},
+{"nom": "Google Cloud Storage", "url": "https://storage.googleapis.com", "auth": "key", "free": "5 GB", "doc": "https://cloud.google.com/storage/docs"},
+{"nom": "Azure Blob", "url": "https://blob.core.windows.net", "auth": "key", "free": "5 GB", "doc": "https://docs.microsoft.com/azure/storage"},
+{"nom": "Cloudinary", "url": "https://api.cloudinary.com/v1_1", "auth": "key", "free": "25 GB", "doc": "https://cloudinary.com/documentation"},
+{"nom": "Uploadcare", "url": "https://uploadcare.com/api", "auth": "key", "free": "3 GB", "doc": "https://uploadcare.com/docs"},
+{"nom": "Supabase Storage", "url": "https://supabase.co/storage/v1", "auth": "key", "free": "1 GB", "doc": "https://supabase.com/docs/guides/storage"},
+{"nom": "Firebase Storage", "url": "https://firebasestorage.googleapis.com", "auth": "key", "free": "5 GB", "doc": "https://firebase.google.com/docs/storage"},
+{"nom": "Backblaze B2", "url": "https://api.backblazeb2.com/b2api/v2", "auth": "key", "free": "10 GB", "doc": "https://www.backblaze.com/b2/docs"},
+],
+"database": [
+{"nom": "Supabase", "url": "https://supabase.co/rest/v1", "auth": "key", "free": "500 MB", "doc": "https://supabase.com/docs"},
+{"nom": "Firebase Realtime", "url": "https://firebaseio.com", "auth": "key", "free": "1 GB", "doc": "https://firebase.google.com/docs/database"},
+{"nom": "MongoDB Atlas", "url": "https://cloud.mongodb.com", "auth": "key", "free": "512 MB", "doc": "https://docs.atlas.mongodb.com"},
+{"nom": "Redis Cloud", "url": "https://redis.com", "auth": "key", "free": "30 MB", "doc": "https://redis.io/docs"},
+{"nom": "Neon Postgres", "url": "https://console.neon.tech", "auth": "key", "free": "3 GB", "doc": "https://neon.tech/docs"},
+{"nom": "PlanetScale", "url": "https://api.planetscale.com", "auth": "key", "free": "5 GB", "doc": "https://planetscale.com/docs"},
+{"nom": "CockroachDB", "url": "https://cockroachlabs.cloud", "auth": "key", "free": "5 GB", "doc": "https://www.cockroachlabs.com/docs"},
+{"nom": "Airtable", "url": "https://api.airtable.com/v0", "auth": "key", "free": "1200 records", "doc": "https://airtable.com/developers/web/api"},
+],
+"communication": [
+{"nom": "Zoom", "url": "https://api.zoom.us/v2", "auth": "oauth", "free": "gratuit", "doc": "https://developers.zoom.us/docs"},
+{"nom": "Google Meet", "url": "https://meet.googleapis.com", "auth": "oauth", "free": "gratuit", "doc": "https://developers.google.com/meet"},
+{"nom": "Microsoft Teams", "url": "https://graph.microsoft.com/v1.0", "auth": "oauth", "free": "gratuit", "doc": "https://docs.microsoft.com/graph"},
+{"nom": "Agora", "url": "https://api.agora.io", "auth": "key", "free": "10000 min/mois", "doc": "https://docs.agora.io"},
+{"nom": "Daily.co", "url": "https://api.daily.co/v1", "auth": "key", "free": "2000 min/mois", "doc": "https://docs.daily.co"},
+{"nom": "Jitsi (auto-hébergé)", "url": "https://meet.jit.si", "auth": "aucune", "free": "gratuit", "doc": "https://jitsi.org/api"},
+],
+"productivity": [
+{"nom": "Notion", "url": "https://api.notion.com/v1", "auth": "key", "free": "gratuit", "doc": "https://developers.notion.com"},
+{"nom": "Trello", "url": "https://api.trello.com/1", "auth": "key", "free": "gratuit", "doc": "https://developer.atlassian.com/cloud/trello"},
+{"nom": "Asana", "url": "https://app.asana.com/api/1.0", "auth": "token", "free": "gratuit", "doc": "https://developers.asana.com"},
+{"nom": "Todoist", "url": "https://api.todoist.com/rest/v2", "auth": "token", "free": "gratuit", "doc": "https://developer.todoist.com"},
+{"nom": "Google Calendar", "url": "https://www.googleapis.com/calendar/v3", "auth": "oauth", "free": "gratuit", "doc": "https://developers.google.com/calendar"},
+{"nom": "Google Sheets", "url": "https://sheets.googleapis.com/v4", "auth": "oauth", "free": "gratuit", "doc": "https://developers.google.com/sheets"},
+{"nom": "Google Drive", "url": "https://www.googleapis.com/drive/v3", "auth": "oauth", "free": "gratuit", "doc": "https://developers.google.com/drive"},
+{"nom": "Dropbox", "url": "https://api.dropboxapi.com/2", "auth": "oauth", "free": "gratuit", "doc": "https://www.dropbox.com/developers/documentation"},
+{"nom": "Slack", "url": "https://slack.com/api", "auth": "token", "free": "gratuit", "doc": "https://api.slack.com"},
+{"nom": "ClickUp", "url": "https://api.clickup.com/api/v2", "auth": "token", "free": "gratuit", "doc": "https://clickup.com/api"},
+],
+"dev_tools": [
+{"nom": "GitHub", "url": "https://api.github.com", "auth": "token", "free": "5000/h", "doc": "https://docs.github.com/rest"},
+{"nom": "GitLab", "url": "https://gitlab.com/api/v4", "auth": "token", "free": "gratuit", "doc": "https://docs.gitlab.com/ee/api"},
+{"nom": "Bitbucket", "url": "https://api.bitbucket.org/2.0", "auth": "oauth", "free": "gratuit", "doc": "https://developer.atlassian.com/bitbucket"},
+{"nom": "Vercel", "url": "https://api.vercel.com", "auth": "token", "free": "gratuit", "doc": "https://vercel.com/docs/rest-api"},
+{"nom": "Netlify", "url": "https://api.netlify.com/api/v1", "auth": "token", "free": "gratuit", "doc": "https://docs.netlify.com/api"},
+{"nom": "Cloudflare", "url": "https://api.cloudflare.com/client/v4", "auth": "token", "free": "gratuit", "doc": "https://developers.cloudflare.com/api"},
+{"nom": "Docker Hub", "url": "https://hub.docker.com/v2", "auth": "aucune", "free": "gratuit", "doc": "https://docs.docker.com/docker-hub/api"},
+{"nom": "npm Registry", "url": "https://registry.npmjs.org", "auth": "aucune", "free": "gratuit", "doc": "https://github.com/npm/registry"},
+{"nom": "PyPI", "url": "https://pypi.org/pypi", "auth": "aucune", "free": "gratuit", "doc": "https://warehouse.pypa.io/api-reference"},
+{"nom": "Docker Hub Auth", "url": "https://auth.docker.io", "auth": "aucune", "free": "gratuit", "doc": "https://docs.docker.com"},
+],
+"blockchain": [
+{"nom": "Ethereum JSON-RPC", "url": "https://mainnet.infura.io/v3", "auth": "key", "free": "100k/jour", "doc": "https://infura.io/docs"},
+{"nom": "Alchemy", "url": "https://eth-mainnet.g.alchemy.com/v2", "auth": "key", "free": "300M/mois", "doc": "https://docs.alchemy.com"},
+{"nom": "Moralis", "url": "https://deep-index.moralis.io/api/v2", "auth": "key", "free": "40k/jour", "doc": "https://docs.moralis.io"},
+{"nom": "QuickNode", "url": "https://api.quicknode.com", "auth": "key", "free": "10M/mois", "doc": "https://www.quicknode.com/docs"},
+{"nom": "Covalent", "url": "https://api.covalenthq.com/v1", "auth": "key", "free": "5/sec", "doc": "https://www.covalenthq.com/docs/api"},
+{"nom": "The Graph", "url": "https://api.thegraph.com", "auth": "aucune", "free": "gratuit", "doc": "https://thegraph.com/docs"},
+{"nom": "Blockchair", "url": "https://api.blockchair.com", "auth": "aucune", "free": "30/min", "doc": "https://blockchair.com/api/docs"},
+{"nom": "BlockCypher", "url": "https://api.blockcypher.com/v1", "auth": "aucune", "free": "3/sec", "doc": "https://www.blockcypher.com/dev"},
+],
+"translation": [
+{"nom": "Google Translate", "url": "https://translation.googleapis.com/language/translate/v2", "auth": "key", "free": "500k chars/mois", "doc": "https://cloud.google.com/translate/docs"},
+{"nom": "DeepL", "url": "https://api-free.deepl.com/v2", "auth": "key", "free": "500k chars/mois", "doc": "https://www.deepl.com/docs-api"},
+{"nom": "Microsoft Translator", "url": "https://api.cognitive.microsofttranslator.com", "auth": "key", "free": "2M chars/mois", "doc": "https://docs.microsoft.com/azure/cognitive-services/translator"},
+{"nom": "LibreTranslate", "url": "https://libretranslate.com/translate", "auth": "aucune", "free": "5/min", "doc": "https://libretranslate.com/docs"},
+{"nom": "Yandex Translate", "url": "https://translate.yandex.net/api/v1.5", "auth": "key", "free": "1M chars/mois", "doc": "https://yandex.com/dev/translate"},
+{"nom": "Lingvanex", "url": "https://api.lingvanex.com", "auth": "key", "free": "trial", "doc": "https://lingvanex.com/documentation"},
+],
+"search": [
+{"nom": "Google Custom Search", "url": "https://www.googleapis.com/customsearch/v1", "auth": "key", "free": "100/jour", "doc": "https://developers.google.com/custom-search"},
+{"nom": "Bing Search", "url": "https://api.bing.microsoft.com/v7.0", "auth": "key", "free": "1000/mois", "doc": "https://docs.microsoft.com/bing"},
+{"nom": "Brave Search", "url": "https://api.search.brave.com/res/v1", "auth": "key", "free": "2000/mois", "doc": "https://brave.com/search/api"},
+{"nom": "DuckDuckGo Instant", "url": "https://api.duckduckgo.com", "auth": "aucune", "free": "gratuit", "doc": "https://duckduckgo.com/api"},
+{"nom": "Algolia", "url": "https://api.algolia.com", "auth": "key", "free": "10k req/mois", "doc": "https://www.algolia.com/doc"},
+{"nom": "Elasticsearch", "url": "https://elastic.co", "auth": "key", "free": "14 jours", "doc": "https://www.elastic.co/guide"},
+{"nom": "Meilisearch", "url": "https://meilisearch.com", "auth": "key", "free": "self-hosted", "doc": "https://docs.meilisearch.com"},
+{"nom": "Typesense", "url": "https://typesense.org", "auth": "key", "free": "self-hosted", "doc": "https://typesense.org/docs"},
+],
+"ecommerce": [
+{"nom": "Shopify", "url": "https://shopify.dev/api", "auth": "key", "free": "gratuit", "doc": "https://shopify.dev/docs"},
+{"nom": "WooCommerce", "url": "https://woocommerce.com/wp-json", "auth": "key", "free": "gratuit", "doc": "https://woocommerce.github.io/woocommerce-rest-api-docs"},
+{"nom": "BigCommerce", "url": "https://api.bigcommerce.com/stores", "auth": "key", "free": "gratuit", "doc": "https://developer.bigcommerce.com"},
+{"nom": "Magento", "url": "https://magento.com/rest", "auth": "token", "free": "gratuit", "doc": "https://devdocs.magento.com"},
+{"nom": "Stripe Products", "url": "https://api.stripe.com/v1/products", "auth": "key", "free": "test", "doc": "https://stripe.com/docs/api/products"},
+{"nom": "Printful", "url": "https://api.printful.com", "auth": "key", "free": "gratuit", "doc": "https://www.printful.com/docs"},
+],
+"government": [
+{"nom": "Data.gov", "url": "https://api.data.gov", "auth": "key", "free": "1000/h", "doc": "https://api.data.gov/docs"},
+{"nom": "EU Open Data", "url": "https://data.europa.eu/api", "auth": "aucune", "free": "gratuit", "doc": "https://data.europa.eu/en/developers-corner"},
+{"nom": "World Bank", "url": "https://api.worldbank.org/v2", "auth": "aucune", "free": "gratuit", "doc": "https://datahelpdesk.worldbank.org"},
+{"nom": "UN Data", "url": "https://data.un.org/ws", "auth": "aucune", "free": "gratuit", "doc": "https://data.un.org/Host.aspx?Content=API"},
+{"nom": "Eurostat", "url": "https://ec.europa.eu/eurostat/api", "auth": "aucune", "free": "gratuit", "doc": "https://wikis.ec.europa.eu/display/EUROSTATHELP"},
+{"nom": "INSEE France", "url": "https://api.insee.fr", "auth": "key", "free": "gratuit", "doc": "https://api.insee.fr/catalogue"},
+{"nom": "data.gouv.fr", "url": "https://www.data.gouv.fr/api/1", "auth": "aucune", "free": "gratuit", "doc": "https://doc.data.gouv.fr/api"},
+],
+"games": [
+{"nom": "RAWG", "url": "https://api.rawg.io/api", "auth": "key", "free": "20k/mois", "doc": "https://api.rawg.io/docs"},
+{"nom": "IGDB", "url": "https://api.igdb.com/v4", "auth": "key", "free": "4/sec", "doc": "https://api-docs.igdb.com"},
+{"nom": "Steam", "url": "https://api.steampowered.com", "auth": "key", "free": "100k/jour", "doc": "https://steamcommunity.com/dev"},
+{"nom": "PokéAPI", "url": "https://pokeapi.co/api/v2", "auth": "aucune", "free": "100/min", "doc": "https://pokeapi.co/docs/v2"},
+{"nom": "Chess.com", "url": "https://api.chess.com/pub", "auth": "aucune", "free": "gratuit", "doc": "https://www.chess.com/news/view/published-data-api"},
+{"nom": "Lichess", "url": "https://lichess.org/api", "auth": "aucune", "free": "20/sec", "doc": "https://lichess.org/api"},
+{"nom": "Riot Games", "url": "https://api.riotgames.com", "auth": "key", "free": "20/sec", "doc": "https://developer.riotgames.com"},
+{"nom": "Valorant", "url": "https://api.henrikdev.xyz/valorant", "auth": "key", "free": "30/min", "doc": "https://docs.henrikdev.xyz"},
+{"nom": "OpenDota", "url": "https://api.opendota.com/api", "auth": "aucune", "free": "60/min", "doc": "https://docs.opendota.com"},
+{"nom": "Fortnite API", "url": "https://fortnite-api.com", "auth": "key", "free": "gratuit", "doc": "https://dash.fortnite-api.com"},
+],
+"sciences": [
+{"nom": "NASA", "url": "https://api.nasa.gov", "auth": "key", "free": "1000/h", "doc": "https://api.nasa.gov"},
+{"nom": "SpaceX", "url": "https://api.spacexdata.com/v4", "auth": "aucune", "free": "gratuit", "doc": "https://github.com/r-spacex/SpaceX-API"},
+{"nom": "Open Notify (ISS)", "url": "http://api.open-notify.org", "auth": "aucune", "free": "gratuit", "doc": "http://open-notify.org/Open-Notify-API"},
+{"nom": "arXiv", "url": "http://export.arxiv.org/api/query", "auth": "aucune", "free": "gratuit", "doc": "https://info.arxiv.org/help/api"},
+{"nom": "CrossRef", "url": "https://api.crossref.org", "auth": "aucune", "free": "50/sec", "doc": "https://api.crossref.org/swagger-ui"},
+{"nom": "Semantic Scholar", "url": "https://api.semanticscholar.org/graph/v1", "auth": "aucune", "free": "100/5min", "doc": "https://api.semanticscholar.org"},
+{"nom": "OpenAlex", "url": "https://api.openalex.org", "auth": "aucune", "free": "100k/jour", "doc": "https://docs.openalex.org"},
+{"nom": "PubMed", "url": "https://eutils.ncbi.nlm.nih.gov", "auth": "aucune", "free": "3/sec", "doc": "https://www.ncbi.nlm.nih.gov/books/NBK25501"},
+{"nom": "Wolfram Alpha", "url": "https://api.wolframalpha.com/v2", "auth": "key", "free": "2000/mois", "doc": "https://products.wolframalpha.com/api"},
+],
+"games_of_thrones_etc": [
+{"nom": "An API of Ice and Fire", "url": "https://anapioficeandfire.com/api", "auth": "aucune", "free": "gratuit", "doc": "https://anapioficeandfire.com"},
+{"nom": "Harry Potter API", "url": "https://hp-api.onrender.com/api", "auth": "aucune", "free": "gratuit", "doc": "https://hp-api.onrender.com"},
+{"nom": "Star Wars SWAPI", "url": "https://swapi.dev/api", "auth": "aucune", "free": "gratuit", "doc": "https://swapi.dev/documentation"},
+{"nom": "Rick and Morty", "url": "https://rickandmortyapi.com/api", "auth": "aucune", "free": "gratuit", "doc": "https://rickandmortyapi.com/documentation"},
+{"nom": "Breaking Bad", "url": "https://breakingbadapi.com/api", "auth": "aucune", "free": "gratuit", "doc": "https://breakingbadapi.com/documentation"},
+{"nom": "Marvel Comics", "url": "https://gateway.marvel.com/v1/public", "auth": "key", "free": "3000/jour", "doc": "https://developer.marvel.com"},
+{"nom": "Superhero API", "url": "https://superheroapi.com/api", "auth": "token", "free": "gratuit", "doc": "https://superheroapi.com"},
+],
+"utilities": [
+{"nom": "QR Code Generator", "url": "https://api.qrserver.com/v1", "auth": "aucune", "free": "gratuit", "doc": "https://goqr.me/api"},
+{"nom": "QR Code Monkey", "url": "https://api.qrcode-monkey.com", "auth": "aucune", "free": "gratuit", "doc": "https://www.qrcode-monkey.com/qr-code-api-with-logo"},
+{"nom": "Short.io", "url": "https://api.short.io", "auth": "key", "free": "1000/mois", "doc": "https://developers.short.io"},
+{"nom": "Bitly", "url": "https://api-ssl.bitly.com/v4", "auth": "token", "free": "1000/mois", "doc": "https://dev.bitly.com"},
+{"nom": "TinyURL", "url": "https://tinyurl.com/api-create.php", "auth": "aucune", "free": "gratuit", "doc": "https://tinyurl.com/app/dev"},
+{"nom": "Screenshot API", "url": "https://api.screenshotmachine.com", "auth": "key", "free": "100/mois", "doc": "https://screenshotmachine.com"},
+{"nom": "PDF.co", "url": "https://api.pdf.co/v1", "auth": "key", "free": "100/mois", "doc": "https://docs.pdf.co"},
+{"nom": "CloudConvert", "url": "https://api.cloudconvert.com/v2", "auth": "key", "free": "25 min/jour", "doc": "https://cloudconvert.com/api/v2"},
+{"nom": "Color API", "url": "https://www.thecolorapi.com", "auth": "aucune", "free": "gratuit", "doc": "https://www.thecolorapi.com/docs"},
+{"nom": "IPify", "url": "https://api.ipify.org", "auth": "aucune", "free": "gratuit", "doc": "https://www.ipify.org"},
+{"nom": "UUID Generator", "url": "https://www.uuidgenerator.net/api", "auth": "aucune", "free": "gratuit", "doc": "https://www.uuidgenerator.net"},
+],
+}
+
+
+# ===============================================================
+# LITELLM PROXY CONFIG GENERATOR
+# ===============================================================
+
+def generer_config_litellm():
+providers = []
+for api in CATALOG["ai_llm"]:
+if api["auth"] == "key":
+providers.append({
+"model_name": api["nom"].lower().replace(" ", "-"),
+"litellm_params": {
+"model": "provider/" + api["nom"].lower().replace(" ", "-"),
+"api_key": "os.environ/" + api["nom"].upper().replace(" ", "_") + "_API_KEY",
+}
+})
+config = {
+"model_list": providers,
+"litellm_settings": {
+"drop_params": True,
+"set_verbose": False,
+"cache": True,
+"cache_params": {
+"type": "local",
+"ttl": 3600
+},
+"num_retries": 3,
+"request_timeout": 30,
+},
+"general_settings": {
+"master_key": "sk-nexus-master-key",
+"database_url": "sqlite:///" + os.path.join(BASE, "litellm.db"),
+}
+}
+path = os.path.join(SCRIPTS_DIR, "litellm_config.yaml")
+with open(path, "w", encoding="utf-8") as f:
+json.dump(config, f, indent=2, ensure_ascii=False)
+log("LiteLLM config : " + path)
+return path
+
+
+def generer_script_litellm():
+script = '''#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# NEXUS LITELLM PROXY LAUNCHER
+import os
+import subprocess
+import sys
+
+CONFIG = os.path.join(os.path.dirname(__file__), "litellm_config.yaml")
+
+if not os.path.isfile(CONFIG):
+print("Config manquante :", CONFIG)
+sys.exit(1)
+
+env = os.environ.copy()
+env.setdefault("LITELLM_MASTER_KEY", "sk-nexus-master-key")
+
+cmd = [
+sys.executable, "-m", "litellm",
+"--config", CONFIG,
+"--port", "4000",
+"--host", "0.0.0.0",
+"--detailed_debug",
+]
+
+print("Lancement LiteLLM sur http://localhost:4000")
+print("Config :", CONFIG)
+print("Cmd :", " ".join(cmd))
+subprocess.call(cmd, env=env)
+'''
+path = os.path.join(SCRIPTS_DIR, "lance_litellm.py")
+with open(path, "w", encoding="utf-8") as f:
+f.write(script)
+os.chmod(path, 0o755)
+log("Launcher LiteLLM : " + path)
+return path
+
+
+def generer_script_fal():
+script = '''#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# NEXUS FAL.AI CLIENT
+import os
+import sys
+import json
+import urllib.request
+import urllib.error
+
+KEY = os.environ.get("FAL_KEY", "")
+ENDPOINT = "https://fal.run/fal-ai/flux/schnell"
+HEADERS = {
+"Authorization": "Key " + KEY,
+"Content-Type": "application/json",
+"Accept": "application/json",
+}
+
+def generer_image(prompt):
+if not KEY:
+print("FAL_KEY manquante")
+return None
+data = json.dumps({
+"prompt": prompt,
+"image_size": "landscape_4_3",
+"num_inference_steps": 4,
+}).encode("utf-8")
+req = urllib.request.Request(ENDPOINT, data=data, headers=HEADERS)
+try:
+with urllib.request.urlopen(req, timeout=60) as r:
+result = json.loads(r.read().decode("utf-8"))
+return result
+except urllib.error.HTTPError as e:
+print("Erreur HTTP", e.code, e.reason)
+return None
+except Exception as e:
+print("Erreur", str(e))
+return None
+
+if __name__ == "__main__":
+if len(sys.argv) < 2:
+print("Usage: python fal_client.py \\"ton prompt\\"")
+sys.exit(1)
+prompt = " ".join(sys.argv[1:])
+result = generer_image(prompt)
+if result:
+print(json.dumps(result, indent=2, ensure_ascii=False))
+'''
+path = os.path.join(SCRIPTS_DIR, "fal_client.py")
+with open(path, "w", encoding="utf-8") as f:
+f.write(script)
+os.chmod(path, 0o755)
+log("Client Fal.ai : " + path)
+return path
+
+
+# ===============================================================
+# DEVOPS TOOLS
+# ===============================================================
+
+DEVOPS_TEMPLATES = {
+"docker_compose": {
+"nom": "Docker Compose",
+"description": "Stack multi-services avec base de donnees, cache et reverse proxy",
+"template": """version: '3.8'
+
+services:
+app:
+build: .
+ports:
+- "8000:8000"
+environment:
+- DATABASE_URL=postgresql://user:pass@db:5432/app
+- REDIS_URL=redis://cache:6379
+depends_on:
+- db
+- cache
+restart: unless-stopped
+
+db:
+image: postgres:16-alpine
+environment:
+POSTGRES_USER: user
+POSTGRES_PASSWORD: pass
+POSTGRES_DB: app
+volumes:
+- db_data:/var/lib/postgresql/data
+restart: unless-stopped
+
+cache:
+image: redis:7-alpine
+volumes:
+- cache_data:/data
+restart: unless-stopped
+
+proxy:
+image: nginx:alpine
+ports:
+- "80:80"
+volumes:
+- ./nginx.conf:/etc/nginx/nginx.conf:ro
+depends_on:
+- app
+restart: unless-stopped
+
+volumes:
+db_data:
+cache_data:
+"""
+},
+"github_actions": {
+"nom": "GitHub Actions CI/CD",
+"description": "Pipeline CI/CD complet avec tests, build et deploiement",
+"template": """name: CI/CD Pipeline
+
+on:
+push:
+branches: [main]
+pull_request:
+branches: [main]
+
+jobs:
+test:
+runs-on: ubuntu-latest
+steps:
+- uses: actions/checkout@v4
+- uses: actions/setup-python@v5
+with:
+python-version: '3.12'
+- run: pip install -r requirements.txt
+- run: pytest --cov=app --cov-report=xml
+- uses: codecov/codecov-action@v4
+with:
+file: ./coverage.xml
+
+build:
+needs: test
+runs-on: ubuntu-latest
+steps:
+- uses: actions/checkout@v4
+- uses: docker/setup-buildx-action@v3
+- uses: docker/login-action@v3
+with:
+registry: ghcr.io
+username: ${{ github.actor }}
+password: ${{ secrets.GITHUB_TOKEN }}
+- uses: docker/build-push-action@v5
+with:
+push: true
+tags: ghcr.io/${{ github.repository }}:latest
+
+deploy:
+needs: build
+if: github.ref == 'refs/heads/main'
+runs-on: ubuntu-latest
+steps:
+- name: Deploy
+run: |
+echo "${{ secrets.DEPLOY_KEY }}" > deploy_key
+chmod 600 deploy_key
+ssh -i deploy_key -o StrictHostKeyChecking=no user@server "docker pull ghcr.io/${{ github.repository }}:latest && docker compose up -d"
+"""
+},
+"dockerfile": {
+"nom": "Dockerfile Python optimise",
+"description": "Image Docker multi-stage ultra-legere",
+"template": """FROM python:3.12-alpine AS builder
+
+WORKDIR /build
+RUN apk add --no-cache gcc musl-dev libffi-dev
+COPY requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
+
+FROM python:3.12-alpine
+
+RUN adduser -D -u 1000 app
+WORKDIR /app
+
+COPY --from=builder /root/.local /home/app/.local
+COPY --chown=app:app . .
+
+USER app
+ENV PATH=/home/app/.local/bin:$PATH
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -q -O- http://localhost:8000/health || exit 1
+
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+"""
+},
+"nginx": {
+"nom": "Nginx reverse proxy",
+"description": "Reverse proxy avec SSL, cache et rate limiting",
+"template": """events {
+worker_connections 1024;
+}
+
+http {
+upstream app {
+server app:8000;
+keepalive 32;
+}
+
+limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+
+server {
+listen 80;
+server_name example.com;
+
+location /.well-known/acme-challenge/ {
+root /var/www/certbot;
+}
+
+location / {
+return 301 https://$host$request_uri;
+}
+}
+
+server {
+listen 443 ssl http2;
+server_name example.com;
+
+ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
+ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_ciphers HIGH:!aNULL:!MD5;
+
+add_header Strict-Transport-Security "max-age=31536000" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "SAMEORIGIN" always;
+
+location /api/ {
+limit_req zone=api burst=20 nodelay;
+proxy_pass http://app;
+proxy_set_header Host $host;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_http_version 1.1;
+}
+
+location /static/ {
+alias /app/static/;
+expires 1y;
+add_header Cache-Control "public, immutable";
+}
+}
+}
+"""
+},
+"kubernetes": {
+"nom": "Kubernetes deployment",
+"description": "Manifeste K8s complet avec deployment, service, ingress, HPA",
+"template": """apiVersion: apps/v1
+kind: Deployment
+metadata:
+name: app
+labels:
+app: app
+spec:
+replicas: 3
+selector:
+matchLabels:
+app: app
+template:
+metadata:
+labels:
+app: app
+spec:
+containers:
+- name: app
+image: ghcr.io/user/app:latest
+ports:
+- containerPort: 8000
+env:
+- name: DATABASE_URL
+valueFrom:
+secretKeyRef:
+name: app-secrets
+key: database-url
+resources:
+requests:
+memory: "128Mi"
+cpu: "100m"
+limits:
+memory: "512Mi"
+cpu: "500m"
+livenessProbe:
+httpGet:
+path: /health
+port: 8000
+initialDelaySeconds: 30
+periodSeconds: 10
+readinessProbe:
+httpGet:
+path: /ready
+port: 8000
+initialDelaySeconds: 5
+periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+name: app
+spec:
+selector:
+app: app
+ports:
+- port: 80
+targetPort: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+name: app
+annotations:
+cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+tls:
+- hosts:
+- example.com
+secretName: app-tls
+rules:
+- host: example.com
+http:
+paths:
+- path: /
+pathType: Prefix
+backend:
+service:
+name: app
+port:
+number: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+name: app
+spec:
+scaleTargetRef:
+apiVersion: apps/v1
+kind: Deployment
+name: app
+minReplicas: 2
+maxReplicas: 10
+metrics:
+- type: Resource
+resource:
+name: cpu
+target:
+type: Utilization
+averageUtilization: 70
+"""
+},
+"terraform": {
+"nom": "Terraform infrastructure",
+"description": "Infrastructure as Code avec VPC, EC2, RDS, S3",
+"template": """terraform {
+required_version = ">= 1.5"
+required_providers {
+aws = {
+source = "hashicorp/aws"
+version = "~> 5.0"
+}
+}
+}
+
+provider "aws" {
+region = var.region
+}
+
+variable "region" {
+default = "eu-west-3"
+}
+
+variable "env" {
+default = "prod"
+}
+
+resource "aws_vpc" "main" {
+cidr_block = "10.0.0.0/16"
+enable_dns_hostnames = true
+tags = {
+Name = "nexus-${var.env}-vpc"
+}
+}
+
+resource "aws_subnet" "public" {
+count = 2
+vpc_id = aws_vpc.main.id
+cidr_block = "10.0.${count.index + 1}.0/24"
+availability_zone = data.aws_availability_zones.available.names[count.index]
+map_public_ip_on_launch = true
+}
+
+data "aws_availability_zones" "available" {}
+
+resource "aws_instance" "app" {
+count = 2
+ami = data.aws_ami.ubuntu.id
+instance_type = "t3.micro"
+subnet_id = aws_subnet.public[count.index].id
+tags = {
+Name = "nexus-${var.env}-app-${count.index}"
+}
+}
+
+data "aws_ami" "ubuntu" {
+most_recent = true
+owners = ["099720109477"]
+filter {
+name = "name"
+values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+}
+}
+
+resource "aws_db_instance" "main" {
+identifier = "nexus-${var.env}-db"
+engine = "postgres"
+engine_version = "16"
+instance_class = "db.t3.micro"
+allocated_storage = 20
+storage_encrypted = true
+skip_final_snapshot = var.env != "prod"
+}
+
+resource "aws_s3_bucket" "assets" {
+bucket = "nexus-${var.env}-assets"
+}
+
+output "app_ips" {
+value = aws_instance.app[*].public_ip
+}
+
+output "db_endpoint" {
+value = aws_db_instance.main.endpoint
+sensitive = true
+}
+"""
+},
+"systemd": {
+"nom": "Systemd service",
+"description": "Service systemd avec redemarrage auto et logs",
+"template": """[Unit]
+Description=Mon Application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/app
+ExecStart=/opt/app/venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/app.log
+StandardError=append:/var/log/app.err
+Environment="PATH=/opt/app/venv/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=-/etc/app/env
+
+# Securite
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log /opt/app/data
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+"""
+},
+"gunicorn": {
+"nom": "Gunicorn config",
+"description": "Configuration Gunicorn production (workers, timeout, logs)",
+"template": """import multiprocessing
+
+bind = "0.0.0.0:8000"
+workers = multiprocessing.cpu_count() * 2 + 1
+worker_class = "uvicorn.workers.UvicornWorker"
+worker_connections = 1000
+timeout = 30
+keepalive = 5
+max_requests = 10000
+max_requests_jitter = 1000
+graceful_timeout = 30
+
+accesslog = "-"
+errorlog = "-"
+loglevel = "info"
+access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)s'
+
+preload_app = True
+daemon = False
+"""
+},
+"makefile": {
+"nom": "Makefile DevOps",
+"description": "Commandes dev/test/build/deploy",
+"template": """.PHONY: help install test lint format build push deploy clean
+
+help:
+\t@echo "Commandes disponibles:"
+\t@echo " make install - Installer les dependances"
+\t@echo " make test - Lancer les tests"
+\t@echo " make lint - Verifier le code"
+\t@echo " make format - Formatter le code"
+\t@echo " make build - Construire l'image Docker"
+\t@echo " make push - Pousser l'image"
+\t@echo " make deploy - Deployer en production"
+\t@echo " make clean - Nettoyer"
+
+install:
+\tpip install -r requirements.txt
+\tpip install -r requirements-dev.txt
+
+test:
+\tpytest -v --cov=app --cov-report=term-missing
+
+lint:
+\truff check .
+\tmypy app
+
+format:
+\truff format .
+\truff check --fix .
+
+build:
+\tdocker build -t app:$$(git rev-parse --short HEAD) .
+\tdocker tag app:$$(git rev-parse --short HEAD) app:latest
+
+push: build
+\tdocker push ghcr.io/user/app:latest
+
+deploy:
+\tkubectl apply -f k8s/
+
+clean:
+\tfind . -type d -name __pycache__ -exec rm -rf {} +
+\tfind . -type f -name "*.pyc" -delete
+\tdocker system prune -f
+"""
+},
+"pre_commit": {
+"nom": "Pre-commit hooks",
+"description": "Hooks pre-commit pour qualite de code",
+"template": """repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks
+rev: v4.5.0
+hooks:
+- id: trailing-whitespace
+- id: end-of-file-fixer
+- id: check-yaml
+- id: check-json
+- id: check-added-large-files
+args: ['--maxkb=1000']
+- id: detect-private-key
+- id: check-merge-conflict
+
+- repo: https://github.com/astral-sh/ruff-pre-commit
+rev: v0.1.14
+hooks:
+- id: ruff
+args: [--fix]
+- id: ruff-format
+
+- repo: https://github.com/pre-commit/mirrors-mypy
+rev: v1.8.0
+hooks:
+- id: mypy
+additional_dependencies: [types-requests]
+
+- repo: https://github.com/PyCQA/bandit
+rev: 1.7.6
+hooks:
+- id: bandit
+args: ['-r', 'app/', '-ll']
+"""
+},
+"requirements": {
+"nom": "Requirements Python",
+"description": "Dependances Python de base pour app moderne",
+"template": """# Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+
+# Base de donnees
+sqlalchemy==2.0.25
+psycopg2-binary==2.9.9
+alembic==1.13.1
+
+# Cache
+redis==5.0.1
+
+# HTTP
+httpx==0.26.0
+requests==2.31.0
+
+# Auth
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
+
+# Utils
+python-dotenv==1.0.0
+loguru==0.7.2
+tenacity==8.2.3
+
+# Tests
+pytest==7.4.4
+pytest-asyncio==0.23.3
+pytest-cov==4.1.0
+httpx==0.26.0
+"""
+},
+"env_example": {
+"nom": "Environment .env.example",
+"description": "Template des variables d'environnement",
+"template": """# App
+APP_NAME=Mon App
+APP_ENV=production
+APP_DEBUG=false
+APP_SECRET_KEY=change-me-in-production
+APP_URL=https://example.com
+
+# Database
+DATABASE_URL=postgresql://user:pass@localhost:5432/app
+DATABASE_POOL_SIZE=10
+
+# Redis
+REDIS_URL=redis://localhost:6379/0
+
+# JWT
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=1440
+
+# APIs externes
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+GOOGLE_API_KEY=
+LITELLM_MASTER_KEY=sk-nexus-master-key
+FAL_KEY=
+
+# Email
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASSWORD=
+SMTP_FROM=noreply@example.com
+
+# Monitoring
+SENTRY_DSN=
+LOG_LEVEL=INFO
+"""
+},
+}
+
+
+# ===============================================================
+# BASE DE DONNEES
+# ===============================================================
+
+def init_db():
+conn = sqlite3.connect(DB_PATH, timeout=30)
+c = conn.cursor()
+
+c.execute("""CREATE TABLE IF NOT EXISTS catalogue (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+categorie TEXT,
+nom TEXT,
+url TEXT,
+auth TEXT,
+free TEXT,
+doc TEXT)""")
+c.execute("CREATE INDEX IF NOT EXISTS idx_cat_cat ON catalogue(categorie)")
+c.execute("CREATE INDEX IF NOT EXISTS idx_cat_nom ON catalogue(nom)")
+
+c.execute("""CREATE TABLE IF NOT EXISTS scripts (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+nom TEXT,
+categorie TEXT,
+fichier TEXT,
+timestamp REAL)""")
+
+c.execute("""CREATE TABLE IF NOT EXISTS apis_testees (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+nom TEXT,
+url TEXT,
+status INTEGER,
+latence_ms REAL,
+timestamp REAL)""")
+
+conn.commit()
+
+c.execute("SELECT COUNT(*) as n FROM catalogue")
+row = c.fetchone()
+if row[0] == 0:
+for cat, apis in CATALOG.items():
+for api in apis:
+c.execute("INSERT INTO catalogue (categorie, nom, url, auth, free, doc) VALUES (?, ?, ?, ?, ?, ?)",
+(cat, api["nom"], api["url"], api["auth"], api["free"], api["doc"]))
+conn.commit()
+
+c.execute("SELECT COUNT(*) as n FROM catalogue")
+total = c.fetchone()[0]
+conn.close()
+log("DB : " + DB_PATH + " (" + str(total) + " APIs)")
+
+catalogue = {"version": VERSION, "total": total, "categories": len(CATALOG),
+"timestamp": datetime.now(timezone.utc).isoformat(),
+"catalogue": CATALOG}
+with open(CATALOG_FILE, "w", encoding="utf-8") as f:
+json.dump(catalogue, f, indent=2, ensure_ascii=False)
+
+
+def get_db():
+conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
+conn.row_factory = sqlite3.Row
+try:
+conn.execute("PRAGMA journal_mode = WAL")
+conn.execute("PRAGMA synchronous = NORMAL")
+except Exception:
+pass
+return conn
+
+
+def count_apis():
+conn = get_db()
+try:
+c = conn.cursor()
+c.execute("SELECT COUNT(*) as n FROM catalogue")
+return c.fetchone()[0]
+finally:
+conn.close()
+
+
+def count_categories():
+conn = get_db()
+try:
+c = conn.cursor()
+c.execute("SELECT COUNT(DISTINCT categorie) as n FROM catalogue")
+return c.fetchone()[0]
+finally:
+conn.close()
+
+
+def liste_categories():
+conn = get_db()
+try:
+c = conn.cursor()
+c.execute("SELECT categorie, COUNT(*) as n FROM catalogue GROUP BY categorie ORDER BY n DESC")
+return [{"categorie": r["categorie"], "count": r["n"]} for r in c.fetchall()]
+finally:
+conn.close()
+
+
+def liste_apis(categorie=None, recherche=None, limit=500):
+conn = get_db()
+try:
+c = conn.cursor()
+if categorie and recherche:
+c.execute("SELECT * FROM catalogue WHERE categorie = ? AND (nom LIKE ? OR url LIKE ?) LIMIT ?",
+(categorie, "%" + recherche + "%", "%" + recherche + "%", limit))
+elif categorie:
+c.execute("SELECT * FROM catalogue WHERE categorie = ? LIMIT ?", (categorie, limit))
+elif recherche:
+c.execute("SELECT * FROM catalogue WHERE nom LIKE ? OR url LIKE ? LIMIT ?",
+("%" + recherche + "%", "%" + recherche + "%", limit))
+else:
+c.execute("SELECT * FROM catalogue LIMIT ?", (limit,))
+return [dict(r) for r in c.fetchall()]
+finally:
+conn.close()
+
+
+# ===============================================================
+# HTML
+# ===============================================================
+
+HTML = """<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NEXUS DEVOPS STUDIO</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,system-ui,sans-serif;background:#05000a;color:#c8ffd0;min-height:100vh;padding:20px}
+.container{max-width:1400px;margin:0 auto}
+h1{font-size:clamp(22px,4vw,38px);font-weight:700;letter-spacing:-2px;background:linear-gradient(135deg,#00ffc8,#00c8ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:6px}
+.sub{color:#5a8a7a;font-size:12px;margin-bottom:20px;font-family:ui-monospace,monospace}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
+.stat{background:rgba(5,20,15,0.7);border:1px solid #1a3a2a;border-radius:10px;padding:14px}
+.stat-lbl{color:#5a8a7a;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.stat-val{color:#00ffc8;font-size:22px;font-weight:700;font-family:ui-monospace,monospace}
+.card{background:rgba(5,20,15,0.7);border:1px solid #1a3a2a;border-radius:12px;padding:16px;margin-bottom:14px}
+.card h2{color:#00d4ff;font-size:11px;text-transform:uppercase;letter-spacing:2px;margin-bottom:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+input,select{background:#05000a;border:1px solid #1a3a2a;border-radius:8px;padding:10px 12px;color:#c8ffd0;font-size:13px;font-family:inherit;outline:none}
+input:focus,select:focus{border-color:#00ffc8}
+input{flex:1;min-width:120px}
+button{background:#00ffc8;color:#000;border:none;padding:10px 20px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
+button:hover{background:#00c8ff}
+button.alt{background:transparent;color:#00ffc8;border:1px solid #1a3a2a}
+button.alt:hover{background:rgba(0,255,200,0.1);border-color:#00ffc8}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.tabs button{background:rgba(0,255,200,0.08);color:#00ffc8;padding:8px 14px;font-size:12px;font-weight:600;border:1px solid rgba(0,255,200,0.3)}
+.tabs button.active{background:#00ffc8;color:#000}
+.api{background:rgba(5,20,15,0.5);border:1px solid #1a3a2a;border-radius:10px;padding:12px;margin-bottom:8px}
+.api h3{color:#00ffc8;font-size:13px;margin-bottom:4px}
+.api .meta{color:#5a8a7a;font-size:10px;font-family:ui-monospace,monospace;line-height:1.5;word-break:break-all}
+.badge{display:inline-block;background:rgba(0,255,200,0.15);color:#00ffc8;font-size:9px;padding:2px 8px;border-radius:999px;font-weight:700;letter-spacing:1px;margin-left:6px}
+.badge.alt{background:rgba(0,200,255,0.15);color:#00c8ff}
+.badge.warn{background:rgba(255,200,0,0.15);color:#ffc800}
+.badge.free{background:rgba(0,255,136,0.15);color:#00ff88}
+pre{background:#05000a;border:1px solid #1a3a2a;border-radius:8px;padding:14px;overflow-x:auto;font-family:ui-monospace,monospace;font-size:11px;color:#a8ffc8;white-space:pre-wrap;word-break:break-word;line-height:1.5;max-height:500px}
+.footer{text-align:center;color:#3a4a4a;font-size:10px;margin-top:30px;font-family:ui-monospace,monospace}
+.loading{text-align:center;padding:30px;color:#5a8a7a;font-family:ui-monospace,monospace}
+.tpl-btn{background:rgba(0,200,255,0.1);color:#00c8ff;border:1px solid rgba(0,200,255,0.3);padding:8px 14px;font-size:12px;font-weight:600;margin-right:6px;margin-bottom:6px}
+.tpl-btn:hover{background:#00c8ff;color:#000}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>NEXUS DEVOPS STUDIO</h1>
+<p class="sub">v__V__ - __AUTEUR__ - __TOTAL__ APIs - __CATS__ categories</p>
+
+<div class="grid" id="stats"></div>
+
+<div class="tabs">
+<button class="active" onclick="showTab('apis')">CATALOGUE APIS</button>
+<button onclick="showTab('templates')">TEMPLATES DEVOPS</button>
+<button onclick="showTab('litellm')">LITELLM</button>
+<button onclick="showTab('fal')">FAL.AI</button>
+</div>
+
+<div id="tab-apis" class="tab-content">
+<div class="card">
+<h2>Catalogue APIs</h2>
+<div class="row">
+<input id="search" placeholder="Rechercher une API (nom, url...)" oninput="chercherApi()">
+<select id="cat-select" onchange="chargerApis()">
+<option value="">Toutes les categories</option>
+</select>
+<button class="alt" onclick="chargerApis()">RECHARGER</button>
+<button class="alt" onclick="exportApis()">EXPORT JSON</button>
+</div>
+</div>
+<div id="apis"></div>
+</div>
+
+<div id="tab-templates" class="tab-content" style="display:none">
+<div class="card">
+<h2>Templates DevOps</h2>
+<div class="row" id="tpl-buttons"></div>
+</div>
+<div id="tpl-content"></div>
+</div>
+
+<div id="tab-litellm" class="tab-content" style="display:none">
+<div class="card">
+<h2>LiteLLM Proxy - 100+ LLMs unifies</h2>
+<p style="color:#5a8a7a;font-size:12px;margin-bottom:12px">Proxy Python qui unifie l'acces a OpenAI, Anthropic, Gemini, Mistral, Groq, Together, Replicate et 100+ autres modeles derriere une seule API compatible OpenAI.</p>
+<button onclick="genererLitellm()">GENERER CONFIG LITELLM</button>
+<button class="alt" onclick="genererLanceurLitellm()">GENERER LANCEUR</button>
+</div>
+<div id="litellm-content"></div>
+</div>
+
+<div id="tab-fal" class="tab-content" style="display:none">
+<div class="card">
+<h2>Fal.ai - Modeles IA unifies</h2>
+<p style="color:#5a8a7a;font-size:12px;margin-bottom:12px">Plateforme qui donne acces a de nombreux modeles image, video et audio via une API unifiee.</p>
+<button onclick="genererFal()">GENERER CLIENT FAL</button>
+</div>
+<div id="fal-content"></div>
+</div>
+
+<div class="footer">NEXUS DEVOPS STUDIO v__V__ - Aissa Mohammedi (DGK)</div>
+</div>
+
+<script>
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+
+async function loadStats(){
+try{
+var r = await fetch('/api/stats');
+var d = await r.json();
+document.getElementById('stats').innerHTML =
+'<div class="stat"><div class="stat-lbl">APIs catalogue</div><div class="stat-val">'+d.total_apis+'</div></div>'+
+'<div class="stat"><div class="stat-lbl">Categories</div><div class="stat-val">'+d.categories+'</div></div>'+
+'<div class="stat"><div class="stat-lbl">Scripts generes</div><div class="stat-val">'+d.scripts+'</div></div>'+
+'<div class="stat"><div class="stat-lbl">Templates DevOps</div><div class="stat-val">'+d.templates+'</div></div>';
+}catch(e){}
+}
+
+async function loadCategories(){
+try{
+var r = await fetch('/api/categories');
+var d = await r.json();
+var sel = document.getElementById('cat-select');
+(d.categories||[]).forEach(function(c){
+var opt = document.createElement('option');
+opt.value = c.categorie;
+opt.textContent = c.categorie + ' (' + c.count + ')';
+sel.appendChild(opt);
+});
+var tplDiv = document.getElementById('tpl-buttons');
+(d.templates||[]).forEach(function(t){
+var b = document.createElement('button');
+b.className = 'tpl-btn';
+b.textContent = t.nom;
+b.onclick = function(){ chargerTemplate(t.key); };
+tplDiv.appendChild(b);
+});
+}catch(e){}
+}
+
+async function chargerApis(){
+var cat = document.getElementById('cat-select').value;
+var q = document.getElementById('search').value;
+var url = '/api/apis?limit=500';
+if(cat) url += '&categorie=' + encodeURIComponent(cat);
+if(q) url += '&q=' + encodeURIComponent(q);
+var res = document.getElementById('apis');
+res.innerHTML = '<div class="loading">Chargement...</div>';
+try{
+var r = await fetch(url);
+var d = await r.json();
+var html = '';
+(d.apis||[]).forEach(function(a){
+var authBadge = a.auth === 'aucune' ? '<span class="badge free">no-auth</span>' : '<span class="badge warn">'+esc(a.auth)+'</span>';
+var freeBadge = '<span class="badge alt">'+esc(a.free)+'</span>';
+html += '<div class="api">'+
+'<h3>'+esc(a.nom)+authBadge+freeBadge+'</h3>'+
+'<div class="meta">'+esc(a.categorie)+' | '+esc(a.url)+'</div>'+
+'<div class="meta"><a href="'+esc(a.doc)+'" target="_blank" style="color:#00c8ff">'+esc(a.doc)+'</a></div>'+
+'</div>';
+});
+res.innerHTML = html || '<div class="loading">Aucune API trouvee</div>';
+}catch(e){
+res.innerHTML = '<div class="loading" style="color:#ff4444">Erreur</div>';
+}
+}
+
+function chercherApi(){
+clearTimeout(window._t);
+window._t = setTimeout(chargerApis, 300);
+}
+
+async function chargerTemplate(key){
+var res = document.getElementById('tpl-content');
+res.innerHTML = '<div class="loading">Chargement...</div>';
+try{
+var r = await fetch('/api/template?key=' + encodeURIComponent(key));
+var d = await r.json();
+res.innerHTML = '<div class="card"><h2>'+esc(d.nom)+' - '+esc(d.description)+'</h2><pre>'+esc(d.template)+'</pre><button onclick="copierTemplate()">COPIER</button></div>';
+window._currentTemplate = d.template;
+}catch(e){
+res.innerHTML = '<div class="loading" style="color:#ff4444">Erreur</div>';
+}
+}
+
+function copierTemplate(){
+if(navigator.clipboard && window._currentTemplate){
+navigator.clipboard.writeText(window._currentTemplate);
+alert('Copie');
+}
+}
+
+async function genererLitellm(){
+var res = document.getElementById('litellm-content');
+res.innerHTML = '<div class="loading">Generation...</div>';
+var r = await fetch('/api/litellm/config', {method:'POST'});
+var d = await r.json();
+res.innerHTML = '<div class="card"><h2>Config LiteLLM generee</h2><div class="meta">Fichier : '+esc(d.path)+'</div><pre>'+esc(d.contenu)+'</pre></div>';
+}
+
+async function genererLanceurLitellm(){
+var res = document.getElementById('litellm-content');
+var r = await fetch('/api/litellm/launcher', {method:'POST'});
+var d = await r.json();
+res.innerHTML = '<div class="card"><h2>Lanceur LiteLLM</h2><div class="meta">Fichier : '+esc(d.path)+'</div><pre>'+esc(d.contenu)+'</pre><p style="margin-top:12px;color:#5a8a7a;font-size:12px">Pour lancer : pip install litellm puis python3 '+esc(d.path)+'</p></div>';
+}
+
+async function genererFal(){
+var res = document.getElementById('fal-content');
+res.innerHTML = '<div class="loading">Generation...</div>';
+var r = await fetch('/api/fal/client', {method:'POST'});
+var d = await r.json();
+res.innerHTML = '<div class="card"><h2>Client Fal.ai</h2><div class="meta">Fichier : '+esc(d.path)+'</div><pre>'+esc(d.contenu)+'</pre><p style="margin-top:12px;color:#5a8a7a;font-size:12px">Usage : export FAL_KEY=xxx puis python3 '+esc(d.path)+' "ton prompt"</p></div>';
+}
+
+function exportApis(){
+window.location.href = '/api/export';
+}
+
+function showTab(name){
+document.querySelectorAll('.tab-content').forEach(function(t){ t.style.display = 'none'; });
+document.getElementById('tab-' + name).style.display = 'block';
+document.querySelectorAll('.tabs button').forEach(function(b){ b.classList.remove('active'); });
+event.target.classList.add('active');
+}
+
+loadStats();
+loadCategories();
+chargerApis();
+setInterval(loadStats, 10000);
+</script>
+</body>
+</html>"""
+
+
+# ===============================================================
+# SERVEUR HTTP
+# ===============================================================
+
+class Handler(BaseHTTPRequestHandler):
+def log_message(self, *a):
+pass
+
+def _send(self, code, content, ctype="application/json"):
+try:
+gz = None
+if len(content) > 500 and "gzip" in self.headers.get("Accept-Encoding", ""):
+content = gzip.compress(content, 6)
+gz = "gzip"
+self.send_response(code)
+self.send_header("Content-Type", ctype + "; charset=utf-8")
+self.send_header("Access-Control-Allow-Origin", "*")
+self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+self.send_header("Access-Control-Allow-Headers", "Content-Type")
+if gz:
+self.send_header("Content-Encoding", gz)
+self.send_header("Content-Length", str(len(content)))
+self.end_headers()
+self.wfile.write(content)
+except (BrokenPipeError, ConnectionResetError):
+pass
+
+def _json(self, obj, code=200):
+self._send(code, json.dumps(obj, ensure_ascii=False, default=str).encode("utf-8"))
+
+def _html(self, html):
+self._send(200, html.encode("utf-8"), "text/html")
+
+def do_OPTIONS(self):
+self._send(204, b"")
+
+def do_GET(self):
+try:
+u = urllib.parse.urlparse(self.path)
+p = u.path
+q = urllib.parse.parse_qs(u.query)
+
+if p in ("/", "/index.html"):
+html = HTML.replace("__V__", VERSION).replace("__AUTEUR__", AUTEUR)
+html = html.replace("__TOTAL__", str(count_apis())).replace("__CATS__", str(count_categories()))
+return self._html(html)
+
+if p == "/api/health":
+return self._json({"status": "ok", "version": VERSION})
+
+if p == "/api/stats":
+return self._json({
+"version": VERSION,
+"total_apis": count_apis(),
+"categories": count_categories(),
+"scripts": len(DEVOPS_TEMPLATES),
+"templates": len(DEVOPS_TEMPLATES),
+"timestamp": datetime.now(timezone.utc).isoformat(),
+})
+
+if p == "/api/categories":
+cats = liste_categories()
+tpls = [{"key": k, "nom": v["nom"], "description": v["description"]} for k, v in DEVOPS_TEMPLATES.items()]
+return self._json({"categories": cats, "templates": tpls})
+
+if p == "/api/apis":
+cat = q.get("categorie", [None])[0]
+recherche = q.get("q", [None])[0]
+limit = int(q.get("limit", ["500"])[0])
+return self._json({"apis": liste_apis(cat, recherche, limit)})
+
+if p == "/api/template":
+key = q.get("key", [""])[0]
+if key in DEVOPS_TEMPLATES:
+tpl = DEVOPS_TEMPLATES[key]
+return self._json({"nom": tpl["nom"], "description": tpl["description"], "template": tpl["template"]})
+return self._json({"erreur": "not found"}, 404)
+
+if p == "/api/export":
+content = json.dumps(CATALOG, indent=2, ensure_ascii=False).encode("utf-8")
+self._send(200, content, "application/json")
+return
+
+return self._json({"erreur": "not found"}, 404)
+except Exception as e:
+return self._json({"erreur": str(e)[:200]}, 500)
+
+def do_POST(self):
+try:
+u = urllib.parse.urlparse(self.path)
+p = u.path
+
+if p == "/api/litellm/config":
+path = generer_config_litellm()
+with open(path, "r", encoding="utf-8") as f:
+content = f.read()
+return self._json({"path": path, "contenu": content})
+
+if p == "/api/litellm/launcher":
+path = generer_script_litellm()
+with open(path, "r", encoding="utf-8") as f:
+content = f.read()
+return self._json({"path": path, "contenu": content})
+
+if p == "/api/fal/client":
+path = generer_script_fal()
+with open(path, "r", encoding="utf-8") as f:
+content = f.read()
+return self._json({"path": path, "contenu": content})
+
+return self._json({"erreur": "not found"}, 404)
+except Exception as e:
+return self._json({"erreur": str(e)[:200]}, 500)
+
+
+def main():
+init_db()
+server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+server.daemon_threads = True
+print("================================================================")
+print(" NEXUS DEVOPS STUDIO v" + VERSION)
+print(" Auteur : Aissa Mohammedi (DGK)")
+print(" Licence : NEXUS-OPEN-2.0")
+print("================================================================")
+print()
+print(" Interface : http://localhost:" + str(PORT) + "/")
+print(" APIs : " + str(count_apis()) + " dans " + str(count_categories()) + " categories")
+print(" Templates : " + str(len(DEVOPS_TEMPLATES)) + " (Docker, K8s, Terraform, CI/CD...)")
+print(" LiteLLM : config + lanceur generes automatiquement")
+print(" Fal.ai : client Python genere automatiquement")
+print()
+print(" Categories : " + ", ".join(sorted(CATALOG.keys())))
+print()
+print(" Ctrl+C pour arreter.")
+print()
+try:
+server.serve_forever()
+except KeyboardInterrupt:
+print("\nArrete.")
+
+
+if __name__ == "__main__":
+main()
